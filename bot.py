@@ -7,6 +7,7 @@ import logging
 import json
 import os
 import asyncio
+import random
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -27,13 +28,40 @@ QUESTIONS = [
     "کجا؟",
     "چه کار می‌کردند؟"
 ]
-DEFAULT_ANSWERS = [
-    "یک آدم عجیب",
-    "با جیش عمو",
-    "تو یه شب مهتابی",
-    "تو دستشویی فرودگاه",
-    "داشتند لواشک می‌خوردند"
-]
+
+# ================= جواب‌های رندوم =================
+RANDOM_ANSWERS = {
+    "چه کسی؟": [
+        "خرت", "ممد آقا", "خاله زنک", "دایی جان ناپلئون", "ببعی قرمز", 
+        "آقای مدیر", "همسایه بغلی", "ننه سرما", "عمو پولدار", "داش خطیب",
+        "جانی", "تفنگچی", "موش موشی", "گربه", "خرس قطبی",
+        "فضایی", "سوپرمن", "مرد عنکبوتی", "جک اسپارو", "هری پاتر"
+    ],
+    "با چه کسی؟": [
+        "با مامانش", "با باباش", "با خرت", "با جیش عمو", "با ننه سرما",
+        "با خاله زنک", "با همسایه", "با آقای مدیر", "با عمو پولدار", "با دایی جان",
+        "با خودش", "با سایه‌ش", "با گربه", "با ماهی قرمز", "با رئیس",
+        "با پلیس", "با دکتر", "با معلم", "با ربات", "با فضایی‌ها"
+    ],
+    "چه زمانی؟": [
+        "دیشب", "پریروز", "همین الان", "تو یه شب مهتابی", "ظهر جمعه",
+        "ساعت 3 نصف شب", "وقتی بارون میومد", "روز عید", "شب یلدا", "13 فروردین",
+        "وقتی کسی نبود", "زمان قاجار", "تو قرون وسطی", "فردا", "همون موقع",
+        "وقتی همه خواب بودن", "سر کلاس", "تو ترافیک", "زمان برف", "روز جمعه"
+    ],
+    "کجا؟": [
+        "تو دستشویی فرودگاه", "توی خیابون", "زیر تخت", "توی کمد", "روی پشت بوم",
+        "تو بیمارستان", "توی مدرسه", "توی حمام", "توی آشپزخونه", "توی ماشین",
+        "توی پارک", "توی سینما", "توی رستوران", "توی مترو", "توی هواپیما",
+        "توی برج میلاد", "توی کوه", "کنار دریا", "توی بیابون", "توی ماه"
+    ],
+    "چه کار می‌کردند؟": [
+        "داشتند لواشک می‌خوردند", "رقصیدن", "آواز خوندن", "فیلم دیدن", "بازی کردن",
+        "خوابیدن", "غذا خوردن", "چای خوردن", "گپ زدن", "دعوا کردن",
+        "قهقه سر میدادن", "موشک پرتاب می‌کردن", "گل بازی می‌کردن", "فوتبال بازی می‌کردن", "کتاب می‌خوندن",
+        "کارتون می‌دیدن", "آهنگ گوش می‌دادن", "نقاشی می‌کشیدن", "باغبونی می‌کردن", "خرید می‌رفتن"
+    ]
+}
 
 # ================= ذخیره اطلاعات =================
 class GameManager:
@@ -41,6 +69,7 @@ class GameManager:
         self.games = {}
         self.user_states = {}
         self.game_messages = {}
+        self.timeout_tasks = {}
     
     def create_group_game(self, chat_id, creator_id, creator_name):
         """ساخت بازی جدید در گروه"""
@@ -54,7 +83,8 @@ class GameManager:
             'status': 'waiting',
             'current_question': 0,
             'time_limit': 60,
-            'game_message_id': None
+            'game_message_id': None,
+            'timeout_active': False
         }
         return game_id
     
@@ -80,6 +110,9 @@ class GameManager:
         """کنسل کردن بازی (فقط توسط سازنده)"""
         if game_id in self.games:
             if self.games[game_id]['creator'] == user_id:
+                if game_id in self.timeout_tasks:
+                    self.timeout_tasks[game_id].cancel()
+                    del self.timeout_tasks[game_id]
                 del self.games[game_id]
                 return True
         return False
@@ -89,6 +122,9 @@ class GameManager:
         if game_id in self.games:
             game = self.games[game_id]
             if game['creator'] == user_id:
+                if game_id in self.timeout_tasks:
+                    self.timeout_tasks[game_id].cancel()
+                    del self.timeout_tasks[game_id]
                 for pid in game['players']:
                     if pid in self.user_states:
                         del self.user_states[pid]
@@ -110,6 +146,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================= توابع کمکی =================
+def get_random_answer(question: str) -> str:
+    """گرفتن جواب رندوم برای سوال"""
+    if question in RANDOM_ANSWERS:
+        return random.choice(RANDOM_ANSWERS[question])
+    return "یه چیز عجیب"
+
 async def delete_message_after_delay(context, chat_id, message_id, delay=5):
     """حذف پیام بعد از چند ثانیه"""
     await asyncio.sleep(delay)
@@ -299,7 +341,7 @@ async def private_help_callback(update: Update, context: ContextTypes.DEFAULT_TY
 **⚠️ نکات مهم:**
 • فقط سازنده بازی می‌تونه بازی رو شروع یا کنسل کنه
 • هر سوال بین 30 تا 120 ثانیه وقت دارید
-• اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
+• اگه کسی جواب نده، جواب تصادفی و خنده‌دار گذاشته میشه
 • بازی با 3 تا 10 نفر لذت‌بخش‌تره
 • لطفاً جواب سوال «با چه کسی؟» را با «با x» بنویسید
 
@@ -331,7 +373,7 @@ async def group_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 **⚠️ نکات مهم:**
 • فقط سازنده بازی می‌تونه بازی رو شروع یا کنسل کنه
 • هر سوال بین 30 تا 120 ثانیه وقت دارید
-• اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
+• اگه کسی جواب نده، جواب تصادفی و خنده‌دار گذاشته میشه
 • بازی با 3 تا 10 نفر لذت‌بخش‌تره
 • لطفاً جواب سوال «با چه کسی؟» را با «با x» بنویسید
 
@@ -509,11 +551,26 @@ async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
              f"⏱ هر سوال {game['time_limit']} ثانیه وقت دارید.\n\n"
              f"📝 به پیوی ربات برید و به سوالات جواب بدید!\n\n"
              f"🛑 برای کنسل کردن بازی از دستور /stop استفاده کنید.\n\n"
-             f"💡 **نکته:** جواب سوال «با چه کسی؟» را با «با x» بنویسید.",
+             f"💡 **نکته:** جواب سوال «با چه کسی؟» را با «با x» بنویسید.\n\n"
+             f"🎲 اگه کسی جواب نده، خودم براش یه جواب تصادفی و خنده‌دار انتخاب می‌کنم!",
         parse_mode='Markdown'
     )
     
     await ask_question_group(game_id, 0, context)
+
+async def start_timeout(game_id: str, q_index: int, time_limit: int, context: ContextTypes.DEFAULT_TYPE):
+    """شروع تایمر برای سوال جاری"""
+    await asyncio.sleep(time_limit)
+    
+    if game_id not in game_manager.games:
+        return
+    
+    game = game_manager.games[game_id]
+    
+    # چک کن بازی هنوز در حال انجامه و تایمر لغو نشده
+    if game.get('status') == 'playing' and game.get('current_question') == q_index:
+        # تایمر تموم شد، برو سوال بعدی با جواب‌های رندوم
+        await timeout_handler_group(game_id, q_index, context)
 
 async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.DEFAULT_TYPE):
     """پرسش سوال در بازی گروهی"""
@@ -525,13 +582,16 @@ async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.D
     if question == "با چه کسی؟":
         extra_note = "\n\n💡 **نکته:** لطفاً جواب را با «با x» بنویسید (مثال: با علی، با مامان، با دوستم)"
     
+    # ریست کردن وضعیت پاسخ‌ها برای این سوال
     for player_id in game['players']:
         game_manager.user_states[player_id] = {
             'game_id': game_id,
             'question': q_index,
             'answered': False
         }
-        
+    
+    # ارسال سوال به همه بازیکنان
+    for player_id in game['players']:
         try:
             await context.bot.send_message(
                 chat_id=player_id,
@@ -544,12 +604,15 @@ async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.D
         except Exception as e:
             logger.error(f"خطا در ارسال به کاربر {player_id}: {e}")
     
-    context.job_queue.run_once(
-        timeout_handler_group,
-        time_limit,
-        data={'game_id': game_id, 'q_index': q_index},
-        name=f"timeout_{game_id}_{q_index}"
-    )
+    # شروع تایمر جدید
+    if game_id in game_manager.timeout_tasks:
+        try:
+            game_manager.timeout_tasks[game_id].cancel()
+        except:
+            pass
+    
+    timeout_task = asyncio.create_task(start_timeout(game_id, q_index, time_limit, context))
+    game_manager.timeout_tasks[game_id] = timeout_task
 
 async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دریافت جواب در بازی گروهی"""
@@ -557,15 +620,25 @@ async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE
     answer_text = update.message.text.strip()
     
     if user_id not in game_manager.user_states:
+        await update.message.reply_text("❌ الان بازی فعالی نیست! برای شروع بازی جدید به گروه برو و /start رو بزن.")
         return
     
     state = game_manager.user_states[user_id]
     game_id = state['game_id']
     
     if game_id not in game_manager.games:
+        await update.message.reply_text("❌ بازی پیدا نشد!")
         return
     
     game = game_manager.games[game_id]
+    
+    # اگه بازی تمام شده یا سوال عوض شده
+    if game['status'] != 'playing' or state['question'] != game['current_question']:
+        await update.message.reply_text("❌ زمان این سوال تموم شده یا بازی تمام شد!")
+        if user_id in game_manager.user_states:
+            del game_manager.user_states[user_id]
+        return
+    
     current_question = QUESTIONS[state['question']]
     
     # اعتبارسنجی برای سوال "با چه کسی؟"
@@ -585,6 +658,7 @@ async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await update.message.reply_text("✅ جوابت ذخیره شد! منتظر بقیه...")
     
+    # چک کن همه جواب دادن؟
     all_answered = True
     for pid in game['players']:
         if pid in game_manager.user_states:
@@ -593,6 +667,11 @@ async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE
                 break
     
     if all_answered:
+        # همه جواب دادن، تایمر را لغو کن و برو سوال بعدی
+        if game_id in game_manager.timeout_tasks:
+            game_manager.timeout_tasks[game_id].cancel()
+            del game_manager.timeout_tasks[game_id]
+        
         next_q = state['question'] + 1
         if next_q < len(QUESTIONS):
             game['current_question'] = next_q
@@ -600,23 +679,44 @@ async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             await finalize_game_group(game_id, context)
 
-async def timeout_handler_group(context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت اتمام زمان در بازی گروهی"""
-    job = context.job
-    game_id = job.data['game_id']
-    q_index = job.data['q_index']
-    
+async def timeout_handler_group(game_id: str, q_index: int, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت اتمام زمان در بازی گروهی - پر کردن جواب‌های ندادن با جواب رندوم"""
     if game_id not in game_manager.games:
         return
     
     game = game_manager.games[game_id]
     
+    # اگه بازی تموم شده یا سوال عوض شده، کاری نکن
+    if game['status'] != 'playing' or game['current_question'] != q_index:
+        return
+    
+    current_question = QUESTIONS[q_index]
+    
+    # پاک کردن تایمر از دیکشنری
+    if game_id in game_manager.timeout_tasks:
+        del game_manager.timeout_tasks[game_id]
+    
+    # برای کسایی که جواب ندادن، جواب رندوم بذار
     for player_id in game['players']:
         if str(player_id) not in game['answers']:
             game['answers'][str(player_id)] = {}
         
-        if QUESTIONS[q_index] not in game['answers'][str(player_id)]:
-            game['answers'][str(player_id)][QUESTIONS[q_index]] = DEFAULT_ANSWERS[q_index]
+        if current_question not in game['answers'][str(player_id)]:
+            random_answer = get_random_answer(current_question)
+            game['answers'][str(player_id)][current_question] = random_answer
+            logger.info(f"جواب رندوم برای کاربر {player_id} و سوال {current_question}: {random_answer}")
+            
+            # به کاربر پیام بده که جوابش رندوم ثبت شده
+            try:
+                await context.bot.send_message(
+                    chat_id=player_id,
+                    text=f"⏰ زمان سوال «{current_question}» تموم شد!\n"
+                         f"یک جواب تصادفی برات انتخاب کردم:\n"
+                         f"**{random_answer}**",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
     
     next_q = q_index + 1
     if next_q < len(QUESTIONS):
@@ -639,7 +739,7 @@ async def finalize_game_group(game_id: str, context: ContextTypes.DEFAULT_TYPE):
         for q_index, question in enumerate(QUESTIONS):
             player_index = (i + q_index) % n
             player_id = str(players[player_index])
-            answer = answers.get(player_id, {}).get(question, DEFAULT_ANSWERS[q_index])
+            answer = answers.get(player_id, {}).get(question, get_random_answer(question))
             story_parts.append(answer)
         
         story = " ".join(story_parts)
@@ -656,6 +756,15 @@ async def finalize_game_group(game_id: str, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
+    # پاک کردن تایمر
+    if game_id in game_manager.timeout_tasks:
+        try:
+            game_manager.timeout_tasks[game_id].cancel()
+        except:
+            pass
+        del game_manager.timeout_tasks[game_id]
+    
+    # پاک کردن بازی
     if game_id in game_manager.games:
         del game_manager.games[game_id]
     

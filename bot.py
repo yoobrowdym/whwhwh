@@ -19,7 +19,7 @@ from telegram.ext import (
 )
 
 # ================= تنظیمات =================
-TOKEN = "توکن"  # جایگزین کن با توکن واقعی
+TOKEN = "8041384292:AAFgB5WqXN3iCMqMIst_jSqqVlCk8o_24l8"  # جایگزین کن با توکن واقعی
 QUESTIONS = [
     "چه کسی؟",
     "با چه کسی؟",

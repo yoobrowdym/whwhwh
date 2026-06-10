@@ -7,7 +7,7 @@ import logging
 import json
 import os
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, MenuButtonCommands
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -52,7 +52,7 @@ class GameManager:
             'status': 'waiting',
             'current_question': 0,
             'message_id': None,
-            'time_limit': 60
+            'time_limit': 60  # زمان پیش‌فرض ۶۰ ثانیه
         }
         return game_id
     
@@ -102,6 +102,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
     if chat.type == "private":
+        # منوی خصوصی - فقط راهنما
         keyboard = [
             [InlineKeyboardButton("❓ راهنمای بازی", callback_data="private_help")]
         ]
@@ -118,6 +119,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # بازی در گروه
+    # بررسی اینکه آیا بازی قبلاً شروع شده
     active_game = None
     for game_id, game in game_manager.games.items():
         if game['chat_id'] == chat.id:
@@ -128,6 +130,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🎮 یه بازی در این گروه در حال انجامه!")
         return
     
+    # نمایش منوی شروع بازی
     keyboard = [
         [InlineKeyboardButton("🎮 شروع بازی جدید", callback_data=f"new_group_game_{chat.id}")],
         [InlineKeyboardButton("❓ راهنما", callback_data="group_help")]
@@ -163,9 +166,9 @@ async def private_help_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 **⚠️ نکات مهم:**
 • فقط سازنده بازی می‌تونه بازی رو شروع کنه
-• هر سوال بین 30 تا 120 ثانیه وقت دارید
+• هر سوال بین ۳۰ تا ۱۲۰ ثانیه وقت دارید
 • اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
-• بازی با 3 تا 10 نفر لذت‌بخش‌تره
+• بازی با ۳ تا ۱۰ نفر لذت‌بخش‌تره
 
 😂 بریم که ببینیم چی میشه!
     """
@@ -190,9 +193,9 @@ async def group_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 **⚠️ نکات مهم:**
 • فقط سازنده بازی می‌تونه بازی رو شروع کنه
-• هر سوال بین 30 تا 120 ثانیه وقت دارید
+• هر سوال بین ۳۰ تا ۱۲۰ ثانیه وقت دارید
 • اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
-• بازی با 3 تا 10 نفر لذت‌بخش‌تره
+• بازی با ۳ تا ۱۰ نفر لذت‌بخش‌تره
 
 😂 بریم که ببینیم چی میشه!
     """
@@ -207,12 +210,16 @@ async def new_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     chat_id = int(query.data.split("_")[-1])
     
+    # بررسی وجود بازی قبلی
     for game_id, game in game_manager.games.items():
         if game['chat_id'] == chat_id and game['status'] == 'waiting':
             await query.edit_message_text("⚠️ یه بازی در حال انتظار قبلاً ساخته شده!")
             return
     
+    # ساخت بازی جدید
     game_id = game_manager.create_group_game(chat_id, user.id, user.first_name)
+    
+    # نمایش وضعیت بازی
     await show_game_status(query, game_id, context)
 
 async def show_game_status(query, game_id: str, context: ContextTypes.DEFAULT_TYPE):
@@ -220,18 +227,19 @@ async def show_game_status(query, game_id: str, context: ContextTypes.DEFAULT_TY
     game = game_manager.games[game_id]
     players_list = "\n".join([f"• {name}" for name in game['usernames']])
     
-    time_30_text = "⏱ 30 ثانیه"
-    time_60_text = "✅ ⏱ 60 ثانیه"
-    time_120_text = "⏱ 120 ثانیه"
+    # دکمه‌های زمان با تیک سبز
+    time_30_text = "⏱ ۳۰ ثانیه"
+    time_60_text = "✅ ⏱ ۶۰ ثانیه"  # پیش‌فرض
+    time_120_text = "⏱ ۱۲۰ ثانیه"
     
     if game['time_limit'] == 30:
-        time_30_text = "✅ ⏱ 30 ثانیه"
-        time_60_text = "⏱ 60 ثانیه"
-        time_120_text = "⏱ 120 ثانیه"
+        time_30_text = "✅ ⏱ ۳۰ ثانیه"
+        time_60_text = "⏱ ۶۰ ثانیه"
+        time_120_text = "⏱ ۱۲۰ ثانیه"
     elif game['time_limit'] == 120:
-        time_30_text = "⏱ 30 ثانیه"
-        time_60_text = "⏱ 60 ثانیه"
-        time_120_text = "✅ ⏱ 120 ثانیه"
+        time_30_text = "⏱ ۳۰ ثانیه"
+        time_60_text = "⏱ ۶۰ ثانیه"
+        time_120_text = "✅ ⏱ ۱۲۰ ثانیه"
     
     keyboard = [
         [InlineKeyboardButton("➕ Join", callback_data=f"join_game_{game_id}")],
@@ -253,14 +261,14 @@ async def show_game_status(query, game_id: str, context: ContextTypes.DEFAULT_TY
 🏠 **بازی «کی کِی کجا» در گروه**
 🎮 وضعیت: در انتظار بازیکنان
 
-👥 **بازیکنان ({len(game['players'])}/10):**
+👥 **بازیکنان ({len(game['players'])}/۱۰):**
 {players_list}
 
 ⏱ **زمان هر سوال:** {game['time_limit']} ثانیه
 
 👑 **سازنده:** {game['usernames'][0]}
 
-📌 حداقل 3 نفر برای شروع لازمه.
+📌 حداقل ۳ نفر برای شروع لازمه.
     """
     
     await query.edit_message_text(status_text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -287,9 +295,13 @@ async def join_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("✅ قبلاً به بازی پیوستی!", show_alert=True)
         return
     
+    # چک کردن اینکه کاربر بات رو استارت کرده یا نه
     try:
+        # امتحان می‌کنیم به کاربر پیام بفرستیم
         await context.bot.send_chat_action(chat_id=user.id, action="typing")
+        # اگر موفق بود، یعنی بات رو استارت کرده
     except Exception:
+        # اگر خطا داد، یعنی بات رو استارت نکرده
         await query.answer("❌ ابتدا ربات رو استارت کن!\n\n/start رو توی پیوی ربات بزن.", show_alert=True)
         return
     
@@ -304,22 +316,11 @@ async def set_time_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    data = query.data
-    parts = data.split("_")
-    
-    # استخراج درست game_id از data
-    # فرمت: set_time_{game_id}_{seconds}
-    game_part = "_".join(parts[3:-1])  # همه چیز بین set_time_ و آخرین بخش
+    parts = query.data.split("_")
+    game_id = f"{parts[3]}_{parts[4]}" if len(parts) > 5 else f"{parts[3]}_{parts[4]}"
     seconds = int(parts[-1])
     
-    # پیدا کردن game_id کامل
-    game_id = None
-    for gid in game_manager.games:
-        if gid.endswith(game_part) or game_part in gid:
-            game_id = gid
-            break
-    
-    if not game_id or game_id not in game_manager.games:
+    if game_id not in game_manager.games:
         await query.answer("❌ بازی پیدا نشد!", show_alert=True)
         return
     
@@ -376,7 +377,7 @@ async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if len(game['players']) < 3:
-        await query.answer(f"⚠️ ظرفیت به حد مجاز نرسیده! حداقل 3 نفر لازم است. (الان {len(game['players'])} نفر)", show_alert=True)
+        await query.answer(f"🚫 حداقل ۳ نفر لازمه! (الان {len(game['players'])} نفر)", show_alert=True)
         return
     
     game['status'] = 'playing'
@@ -389,6 +390,7 @@ async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
+    # شروع پرسش سوالات
     await ask_question_group(game_id, 0, context)
 
 async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.DEFAULT_TYPE):
@@ -397,6 +399,7 @@ async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.D
     question = QUESTIONS[q_index]
     time_limit = game['time_limit']
     
+    # پرسش از هر بازیکن
     for player_id in game['players']:
         game_manager.user_states[player_id] = {
             'game_id': game_id,
@@ -416,6 +419,7 @@ async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.D
         except Exception as e:
             logger.error(f"خطا در ارسال به کاربر {player_id}: {e}")
     
+    # تنظیم تایمر
     context.job_queue.run_once(
         timeout_handler_group,
         time_limit,
@@ -449,6 +453,7 @@ async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await update.message.reply_text("✅ جوابت ذخیره شد! منتظر بقیه...")
     
+    # چک کردن جواب همه
     all_answered = True
     for pid in game['players']:
         if pid in game_manager.user_states:
@@ -521,6 +526,7 @@ async def finalize_game_group(game_id: str, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
+    # پاک کردن بازی
     if game_id in game_manager.games:
         del game_manager.games[game_id]
     
@@ -535,15 +541,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⚠️ یه مشکلی پیش اومد! دوباره امتحان کن")
 
 # ================= اجرای ربات =================
-async def setup_commands(app: Application):
-    """تنظیم دستورات و منوی بات"""
-    await app.bot.set_my_commands([
-        BotCommand("start", "شروع بازی یا مشاهده راهنما"),
-    ])
-    await app.bot.set_chat_menu_button(
-        menu_button=MenuButtonCommands()
-    )
-
 def main():
     """تابع اصلی اجرای ربات"""
     print("""
@@ -556,8 +553,10 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     
-    # اضافه کردن هندلرها
+    # دستورات
     app.add_handler(CommandHandler("start", start))
+    
+    # کالبک‌ها
     app.add_handler(CallbackQueryHandler(new_group_game, pattern="^new_group_game_"))
     app.add_handler(CallbackQueryHandler(private_help_callback, pattern="^private_help$"))
     app.add_handler(CallbackQueryHandler(group_help_callback, pattern="^group_help$"))
@@ -565,11 +564,12 @@ def main():
     app.add_handler(CallbackQueryHandler(set_time_limit, pattern="^set_time_"))
     app.add_handler(CallbackQueryHandler(start_group_game, pattern="^start_group_game_"))
     app.add_handler(CallbackQueryHandler(cancel_game_callback, pattern="^cancel_game_"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer_group))
-    app.add_error_handler(error_handler)
     
-    # تنظیمات اولیه
-    app.job_queue = None  # برای جلوگیری از خطا
+    # هندلر پیام‌ها
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer_group))
+    
+    # هندلر خطا
+    app.add_error_handler(error_handler)
     
     print("🤖 ربات آماده است!")
     print("📱 ربات رو به گروه اضافه کن و /start رو بزن")

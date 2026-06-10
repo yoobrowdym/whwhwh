@@ -709,7 +709,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⚠️ یه مشکلی پیش اومد! دوباره امتحان کن")
 
 # ================= اجرای ربات =================
-async def main():
+def main():
     """تابع اصلی اجرای ربات"""
     print("""
     ====================================
@@ -719,12 +719,8 @@ async def main():
     ====================================
     """)
     
+    # ساخت اپلیکیشن (JobQueue خودکار ساخته میشه)
     app = Application.builder().token(TOKEN).build()
-    
-    # راه‌اندازی JobQueue برای تایمرها
-    if app.job_queue is None:
-        app.job_queue = Application.job_queue()
-        await app.initialize()
     
     # دستورات
     app.add_handler(CommandHandler("start", start))
@@ -750,7 +746,5 @@ async def main():
     print("🛑 برای توقف بازی در گروه: /stop")
     print("⏸ برای متوقف کردن کل ربات: Ctrl+C")
     
-    await app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == '__main__':
-    asyncio.run(main())
+    # اجرا (بدون نیاز به async)
+    app.run_poll

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ربات بازی داستانساز خنده‌دار - نسخه گروهی
+ربات بازی "کی کِی کجا"
 ساخته شده با عشق برای دوستان 😄
 """
 import logging
@@ -61,7 +61,7 @@ class GameManager:
         if game_id in self.games:
             game = self.games[game_id]
             if game['status'] == 'waiting' and user_id not in game['players']:
-                if len(game['players']) < 10:  # حداکثر ۱۰ نفر
+                if len(game['players']) < 10:
                     game['players'].append(user_id)
                     game['usernames'].append(username)
                     return True
@@ -72,6 +72,14 @@ class GameManager:
         if game_id in self.games:
             self.games[game_id]['time_limit'] = seconds
             return True
+        return False
+    
+    def cancel_game(self, game_id, user_id):
+        """کنسل کردن بازی (فقط توسط سازنده)"""
+        if game_id in self.games:
+            if self.games[game_id]['creator'] == user_id:
+                del self.games[game_id]
+                return True
         return False
 
 game_manager = GameManager()
@@ -89,19 +97,28 @@ logger = logging.getLogger(__name__)
 
 # ================= دستورات =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شروع بازی در گروه"""
+    """شروع بازی در گروه یا پیوی"""
     chat = update.effective_chat
     user = update.effective_user
     
     if chat.type == "private":
+        # منوی خصوصی - فقط راهنما
+        keyboard = [
+            [InlineKeyboardButton("❓ راهنمای بازی", callback_data="private_help")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_text(
-            "🎮 **به ربات بازی داستانساز خوش اومدی!**\n\n"
-            "برای بازی کردن، لطفاً من رو به یک گروه اضافه کن\n"
-            "و دوباره دستور /start رو بزن.",
+            f"🙋‍♂️ سلام {user.first_name}!\n"
+            f"🎲 **به بازی «کی کِی کجا» خوش اومدی!**\n\n"
+            f"برای بازی کردن، من رو به یک گروه اضافه کن\n"
+            f"و دوباره توی گروه دستور /start رو بزن.",
+            reply_markup=reply_markup,
             parse_mode='Markdown'
         )
         return
     
+    # بازی در گروه
     # بررسی اینکه آیا بازی قبلاً شروع شده
     active_game = None
     for game_id, game in game_manager.games.items():
@@ -122,33 +139,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = f"""
 🙋‍♂️ سلام {user.first_name}!
-🎲 **به بازی داستانساز خنده‌دار در گروه خوش اومدی**
+🎲 **به بازی «کی کِی کجا» خوش اومدی**
 
-🎯 **چطوری بازی کنیم؟**
-۱. روی دکمه "شروع بازی جدید" کلیک کن
-۲. بقیه اعضا با دکمه "➕ Join" به بازی اضافه میشن
-۳. تو (به عنوان سازنده) زمان هر سوال رو انتخاب کن
-۴. دکمه "▶️ شروع بازی" رو بزن
-۵. همه در پیوی به سوالات جواب میدن
-۶. نتیجه نهایی همینجا تو گروه نمایش داده میشه!
-
-👥 **تعداد بازیکنان:** ۳ تا ۱۰ نفر
-⏱ **زمان هر سوال:** قابل انتخاب (۳۰، ۶۰ یا ۱۲۰ ثانیه)
-
-📌 برای شروع، دکمه زیر رو بزن:
+برای شروع بازی جدید، روی دکمه زیر کلیک کن.
 """
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
 
-async def group_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """راهنمای بازی در گروه"""
+async def private_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """راهنمای بازی در پیوی"""
     query = update.callback_query
     await query.answer()
     
     help_text = """
-📚 **راهنمای بازی در گروه**
+📚 **راهنمای بازی «کی کِی کجا»**
 
-**🎮 مراحل بازی:**
+**🎮 چطوری بازی کنیم؟**
 1️⃣ **بات رو به گروه اضافه کن**
 2️⃣ تو گروه بنویس `/start`
 3️⃣ روی **"شروع بازی جدید"** کلیک کن
@@ -157,6 +163,33 @@ async def group_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 6️⃣ **سازنده بازی** دکمه **"▶️ شروع"** رو بزنه
 7️⃣ همه در **پیوی ربات** به سوالات جواب بدن
 8️⃣ نتیجه نهایی **تو گروه** نمایش داده میشه
+
+**⚠️ نکات مهم:**
+• فقط سازنده بازی می‌تونه بازی رو شروع کنه
+• هر سوال بین ۳۰ تا ۱۲۰ ثانیه وقت دارید
+• اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
+• بازی با ۳ تا ۱۰ نفر لذت‌بخش‌تره
+
+😂 بریم که ببینیم چی میشه!
+    """
+    
+    await query.edit_message_text(help_text, parse_mode='Markdown')
+
+async def group_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """راهنمای بازی در گروه"""
+    query = update.callback_query
+    await query.answer()
+    
+    help_text = """
+📚 **راهنمای بازی «کی کِی کجا» در گروه**
+
+**🎮 مراحل بازی:**
+1️⃣ روی **"شروع بازی جدید"** کلیک کن
+2️⃣ بقیه اعضا روی **"➕ Join"** کلیک کنن
+3️⃣ **سازنده بازی** زمان هر سوال رو انتخاب کنه
+4️⃣ **سازنده بازی** دکمه **"▶️ شروع"** رو بزنه
+5️⃣ همه در **پیوی ربات** به سوالات جواب بدن
+6️⃣ نتیجه نهایی **تو گروه** نمایش داده میشه
 
 **⚠️ نکات مهم:**
 • فقط سازنده بازی می‌تونه بازی رو شروع کنه
@@ -194,10 +227,29 @@ async def show_game_status(query, game_id: str, context: ContextTypes.DEFAULT_TY
     game = game_manager.games[game_id]
     players_list = "\n".join([f"• {name}" for name in game['usernames']])
     
+    # دکمه‌های زمان با تیک سبز
+    time_30_text = "⏱ ۳۰ ثانیه"
+    time_60_text = "✅ ⏱ ۶۰ ثانیه"  # پیش‌فرض
+    time_120_text = "⏱ ۱۲۰ ثانیه"
+    
+    if game['time_limit'] == 30:
+        time_30_text = "✅ ⏱ ۳۰ ثانیه"
+        time_60_text = "⏱ ۶۰ ثانیه"
+        time_120_text = "⏱ ۱۲۰ ثانیه"
+    elif game['time_limit'] == 120:
+        time_30_text = "⏱ ۳۰ ثانیه"
+        time_60_text = "⏱ ۶۰ ثانیه"
+        time_120_text = "✅ ⏱ ۱۲۰ ثانیه"
+    
     keyboard = [
         [InlineKeyboardButton("➕ Join", callback_data=f"join_game_{game_id}")],
-        [InlineKeyboardButton("⏱ انتخاب زمان", callback_data=f"select_time_{game_id}")],
-        [InlineKeyboardButton("▶️ شروع بازی", callback_data=f"start_group_game_{game_id}")]
+        [
+            InlineKeyboardButton(time_30_text, callback_data=f"set_time_{game_id}_30"),
+            InlineKeyboardButton(time_60_text, callback_data=f"set_time_{game_id}_60"),
+            InlineKeyboardButton(time_120_text, callback_data=f"set_time_{game_id}_120")
+        ],
+        [InlineKeyboardButton("▶️ شروع بازی", callback_data=f"start_group_game_{game_id}")],
+        [InlineKeyboardButton("❌ کنسل کردن بازی", callback_data=f"cancel_game_{game_id}")]
     ]
     
     if game['creator'] != query.from_user.id:
@@ -206,7 +258,7 @@ async def show_game_status(query, game_id: str, context: ContextTypes.DEFAULT_TY
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     status_text = f"""
-🏠 **بازی در گروه**
+🏠 **بازی «کی کِی کجا» در گروه**
 🎮 وضعیت: در انتظار بازیکنان
 
 👥 **بازیکنان ({len(game['players'])}/۱۰):**
@@ -243,18 +295,30 @@ async def join_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("✅ قبلاً به بازی پیوستی!", show_alert=True)
         return
     
+    # چک کردن اینکه کاربر بات رو استارت کرده یا نه
+    try:
+        # امتحان می‌کنیم به کاربر پیام بفرستیم
+        await context.bot.send_chat_action(chat_id=user.id, action="typing")
+        # اگر موفق بود، یعنی بات رو استارت کرده
+    except Exception:
+        # اگر خطا داد، یعنی بات رو استارت نکرده
+        await query.answer("❌ ابتدا ربات رو استارت کن!\n\n/start رو توی پیوی ربات بزن.", show_alert=True)
+        return
+    
     if game_manager.join_game(game_id, user.id, user.first_name):
         await query.answer("✅ به بازی پیوستی!", show_alert=True)
         await show_game_status(query, game_id, context)
     else:
         await query.answer("❌ خطا در پیوستن!", show_alert=True)
 
-async def select_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """انتخاب زمان برای سوالات"""
+async def set_time_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تنظیم زمان بازی"""
     query = update.callback_query
     await query.answer()
     
-    game_id = query.data.replace("select_time_", "")
+    parts = query.data.split("_")
+    game_id = f"{parts[3]}_{parts[4]}" if len(parts) > 5 else f"{parts[3]}_{parts[4]}"
+    seconds = int(parts[-1])
     
     if game_id not in game_manager.games:
         await query.answer("❌ بازی پیدا نشد!", show_alert=True)
@@ -266,34 +330,34 @@ async def select_time_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ فقط سازنده می‌تونه زمان رو انتخاب کنه!", show_alert=True)
         return
     
-    keyboard = [
-        [InlineKeyboardButton("⏱ ۳۰ ثانیه", callback_data=f"set_time_{game_id}_30")],
-        [InlineKeyboardButton("⏱ ۶۰ ثانیه", callback_data=f"set_time_{game_id}_60")],
-        [InlineKeyboardButton("⏱ ۱۲۰ ثانیه", callback_data=f"set_time_{game_id}_120")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        "⏰ **زمان پاسخ به هر سوال رو انتخاب کن:**",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+    game_manager.set_time_limit(game_id, seconds)
+    await show_game_status(query, game_id, context)
 
-async def set_time_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تنظیم زمان بازی"""
+async def cancel_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کنسل کردن بازی"""
     query = update.callback_query
     await query.answer()
     
-    parts = query.data.split("_")
-    game_id = f"{parts[2]}_{parts[3]}" if len(parts) > 4 else f"{parts[2]}_{parts[3]}"
-    seconds = int(parts[-1])
+    game_id = query.data.replace("cancel_game_", "")
     
     if game_id not in game_manager.games:
         await query.answer("❌ بازی پیدا نشد!", show_alert=True)
         return
     
-    game_manager.set_time_limit(game_id, seconds)
-    await show_game_status(query, game_id, context)
+    game = game_manager.games[game_id]
+    
+    if query.from_user.id != game['creator']:
+        await query.answer("❌ فقط سازنده می‌تونه بازی رو کنسل کنه!", show_alert=True)
+        return
+    
+    if game_manager.cancel_game(game_id, query.from_user.id):
+        await query.edit_message_text(
+            "❌ **بازی با موفقیت کنسل شد!**\n\n"
+            "می‌تونی دوباره با /start یه بازی جدید شروع کنی.",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.answer("❌ خطا در کنسل کردن!", show_alert=True)
 
 async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """شروع بازی گروهی"""
@@ -319,7 +383,7 @@ async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game['status'] = 'playing'
     
     await query.edit_message_text(
-        f"🎮 **بازی شروع شد!**\n\n"
+        f"🎮 **بازی «کی کِی کجا» شروع شد!**\n\n"
         f"👥 {len(game['players'])} نفر تو بازی هستن.\n"
         f"⏱ هر سوال {game['time_limit']} ثانیه وقت دارید.\n\n"
         f"📝 به پیوی ربات برید و به سوالات جواب بدید!",
@@ -451,7 +515,7 @@ async def finalize_game_group(game_id: str, context: ContextTypes.DEFAULT_TYPE):
         story = " ".join(story_parts)
         stories.append(f"📖 **داستان {i+1}:** {story}")
     
-    result_text = "🎉 **نتیجه نهایی بازی!** 🎉\n\n"
+    result_text = "🎉 **نتیجه نهایی بازی «کی کِی کجا»!** 🎉\n\n"
     result_text += "\n\n".join(stories)
     result_text += f"\n\n👥 **بازیکنان:** {', '.join(usernames)}"
     result_text += f"\n\n😂 اینم شد داستان‌هاتون!"
@@ -481,7 +545,7 @@ def main():
     """تابع اصلی اجرای ربات"""
     print("""
     ====================================
-       ربات بازی داستانساز خنده‌دار
+       ربات بازی "کی کِی کجا"
           نسخه گروهی
           در حال راه‌اندازی...
     ====================================
@@ -494,11 +558,12 @@ def main():
     
     # کالبک‌ها
     app.add_handler(CallbackQueryHandler(new_group_game, pattern="^new_group_game_"))
+    app.add_handler(CallbackQueryHandler(private_help_callback, pattern="^private_help$"))
     app.add_handler(CallbackQueryHandler(group_help_callback, pattern="^group_help$"))
     app.add_handler(CallbackQueryHandler(join_group_game, pattern="^join_game_"))
-    app.add_handler(CallbackQueryHandler(select_time_callback, pattern="^select_time_"))
     app.add_handler(CallbackQueryHandler(set_time_limit, pattern="^set_time_"))
     app.add_handler(CallbackQueryHandler(start_group_game, pattern="^start_group_game_"))
+    app.add_handler(CallbackQueryHandler(cancel_game_callback, pattern="^cancel_game_"))
     
     # هندلر پیام‌ها
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer_group))

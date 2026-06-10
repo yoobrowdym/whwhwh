@@ -33,7 +33,7 @@ QUESTIONS = [
 RANDOM_ANSWERS = {
     "چه کسی؟": [
         "خرت", "ممد آقا", "خاله زنک", "دایی جان ناپلئون", "ببعی قرمز", 
-        "آقای مدیر", "همسایه بغلی", "ننه سرما", " عمو پولدار", "داش خطیب",
+        "آقای مدیر", "همسایه بغلی", "ننه سرما", "عمو پولدار", "داش خطیب",
         "جانی", "تفنگچی", "موش موشی", "گربه بازیه", "خرس قطبی",
         "فضایی", "سوپرمن", "مرد عنکبوتی", "جک اسپارو", "هری پاتر"
     ],
@@ -45,7 +45,7 @@ RANDOM_ANSWERS = {
     ],
     "چه زمانی؟": [
         "دیشب", "پریروز", "همین الان", "تو یه شب مهتابی", "ظهر جمعه",
-        "ساعت 3 نصف شب", "وقتی بارون میومد", "روز عید", "شب یلدا", "۱۳ فروردین",
+        "ساعت 3 نصف شب", "وقتی بارون میومد", "روز عید", "شب یلدا", "13 فروردین",
         "وقتی کسی نبود", "زمان قاجار", "تو قرون وسطی", "فردا", "همون موقع",
         "وقتی همه خواب بودن", "سر کلاس", "تو ترافیک", "زمان برف", "روز جمعه"
     ],
@@ -709,7 +709,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⚠️ یه مشکلی پیش اومد! دوباره امتحان کن")
 
 # ================= اجرای ربات =================
-def main():
+async def main():
     """تابع اصلی اجرای ربات"""
     print("""
     ====================================
@@ -720,6 +720,11 @@ def main():
     """)
     
     app = Application.builder().token(TOKEN).build()
+    
+    # راه‌اندازی JobQueue برای تایمرها
+    if app.job_queue is None:
+        app.job_queue = Application.job_queue()
+        await app.initialize()
     
     # دستورات
     app.add_handler(CommandHandler("start", start))
@@ -745,7 +750,7 @@ def main():
     print("🛑 برای توقف بازی در گروه: /stop")
     print("⏸ برای متوقف کردن کل ربات: Ctrl+C")
     
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

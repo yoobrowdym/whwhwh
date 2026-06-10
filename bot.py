@@ -681,11 +681,12 @@ def main():
     """)
     
     app = Application.builder().token(TOKEN).build()
-    app.job_queue = None
     
+    # دستورات
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stop", stop_game_command))
     
+    # کالبک‌ها
     app.add_handler(CallbackQueryHandler(new_group_game, pattern="^new_group_game_"))
     app.add_handler(CallbackQueryHandler(private_help_callback, pattern="^private_help$"))
     app.add_handler(CallbackQueryHandler(group_help_callback, pattern="^group_help$"))
@@ -694,7 +695,10 @@ def main():
     app.add_handler(CallbackQueryHandler(start_group_game, pattern="^start_group_game_"))
     app.add_handler(CallbackQueryHandler(cancel_game_callback, pattern="^cancel_game_"))
     
+    # هندلر پیام‌ها
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer_group))
+    
+    # هندلر خطا
     app.add_error_handler(error_handler)
     
     print("🤖 ربات آماده است!")

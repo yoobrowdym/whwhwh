@@ -6,6 +6,7 @@
 import logging
 import json
 import os
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -39,7 +40,7 @@ class GameManager:
     def __init__(self):
         self.games = {}
         self.user_states = {}
-        self.game_messages = {}  # ذخیره پیام‌های وضعیت بازی
+        self.game_messages = {}
     
     def create_group_game(self, chat_id, creator_id, creator_name):
         """ساخت بازی جدید در گروه"""
@@ -109,6 +110,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================= توابع کمکی =================
+async def delete_message_after_delay(context, chat_id, message_id, delay=5):
+    """حذف پیام بعد از چند ثانیه"""
+    await asyncio.sleep(delay)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except:
+        pass
+
 async def update_game_status(game_id: str, context: ContextTypes.DEFAULT_TYPE):
     """به‌روزرسانی پیام وضعیت بازی در گروه"""
     if game_id not in game_manager.games:
@@ -154,6 +163,8 @@ async def update_game_status(game_id: str, context: ContextTypes.DEFAULT_TYPE):
 👑 **سازنده:** {game['usernames'][0]}
 
 📌 حداقل 3 نفر برای شروع لازمه.
+
+💡 **نکته:** لطفاً جواب سوال «با چه کسی؟» را با «با x» بنویسید.
     """
     
     if game['game_message_id']:
@@ -166,7 +177,6 @@ async def update_game_status(game_id: str, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
         except:
-            # اگر پیام قبلی پیدا نشد، پیام جدید بفرست
             message = await context.bot.send_message(
                 chat_id=game['chat_id'],
                 text=status_text,
@@ -205,7 +215,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # بازی در گروه
     active_game = None
     for game_id, game in game_manager.games.items():
         if game['chat_id'] == chat.id:
@@ -292,6 +301,7 @@ async def private_help_callback(update: Update, context: ContextTypes.DEFAULT_TY
 • هر سوال بین 30 تا 120 ثانیه وقت دارید
 • اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
 • بازی با 3 تا 10 نفر لذت‌بخش‌تره
+• لطفاً جواب سوال «با چه کسی؟» را با «با x» بنویسید
 
 😂 بریم که ببینیم چی میشه!
     """
@@ -323,6 +333,7 @@ async def group_help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 • هر سوال بین 30 تا 120 ثانیه وقت دارید
 • اگه کسی جواب نده، جواب پیش‌فرض گذاشته میشه
 • بازی با 3 تا 10 نفر لذت‌بخش‌تره
+• لطفاً جواب سوال «با چه کسی؟» را با «با x» بنویسید
 
 😂 بریم که ببینیم چی میشه!
     """
@@ -339,7 +350,8 @@ async def new_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for game_id, game in game_manager.games.items():
         if game['chat_id'] == chat_id and game['status'] == 'waiting':
-            await query.edit_message_text("⚠️ یه بازی در حال انتظار قبلاً ساخته شده!")
+            msg = await query.edit_message_text("⚠️ یه بازی در حال انتظار قبلاً ساخته شده!")
+            asyncio.create_task(delete_message_after_delay(context, chat_id, msg.message_id, 5))
             return
     
     game_id = game_manager.create_group_game(chat_id, user.id, user.first_name)
@@ -370,7 +382,13 @@ async def join_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_chat_action(chat_id=user.id, action="typing")
     except Exception:
-        await query.answer("❌ ابتدا ربات رو استارت کن!\n\n/start رو توی پیوی ربات بزن.", show_alert=True)
+        msg = await context.bot.send_message(
+            chat_id=game['chat_id'],
+            text=f"⚠️ کاربر {user.mention_html()} عزیز، برای ورود به بازی باید اول بات رو استارت کنی!\n\nلطفاً به پیوی ربات برو و /start رو بزن.",
+            parse_mode='HTML'
+        )
+        asyncio.create_task(delete_message_after_delay(context, game['chat_id'], msg.message_id, 5))
+        await query.answer("❌ ابتدا ربات رو استارت کن!", show_alert=True)
         return
     
     if game_manager.join_game(game_id, user.id, user.first_name):
@@ -427,7 +445,6 @@ async def cancel_game_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     if game_manager.cancel_game(game_id, query.from_user.id):
-        # حذف پیام وضعیت
         try:
             await context.bot.delete_message(
                 chat_id=game['chat_id'],
@@ -436,11 +453,12 @@ async def cancel_game_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         except:
             pass
         
-        await query.edit_message_text(
+        msg = await query.edit_message_text(
             "❌ **بازی با موفقیت کنسل شد!**\n\n"
             "می‌تونی دوباره با /start یه بازی جدید شروع کنی.",
             parse_mode='Markdown'
         )
+        asyncio.create_task(delete_message_after_delay(context, game['chat_id'], msg.message_id, 5))
     else:
         await query.answer("❌ خطا در کنسل کردن!", show_alert=True)
 
@@ -462,12 +480,20 @@ async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if len(game['players']) < 3:
-        await query.answer(f"⚠️ ظرفیت به حد مجاز نرسیده! حداقل 3 نفر لازم است. (الان {len(game['players'])} نفر)", show_alert=True)
+        msg = await context.bot.send_message(
+            chat_id=game['chat_id'],
+            text=f"⚠️ **برای شروع بازی باید ظرفیت به حد مجاز برسه!**\n\n"
+                 f"حداقل به **3 نفر** نیاز است.\n"
+                 f"هم اکنون {len(game['players'])} نفر در بازی حضور دارند.\n\n"
+                 f"لطفاً منتظر بمانید تا تعداد بازیکنان به حد نصاب برسد.",
+            parse_mode='Markdown'
+        )
+        asyncio.create_task(delete_message_after_delay(context, game['chat_id'], msg.message_id, 5))
+        await query.answer(f"⚠️ حداقل 3 نفر لازمه! (الان {len(game['players'])} نفر)", show_alert=True)
         return
     
     game['status'] = 'playing'
     
-    # حذف پیام وضعیت
     try:
         await context.bot.delete_message(
             chat_id=game['chat_id'],
@@ -482,7 +508,8 @@ async def start_group_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
              f"👥 {len(game['players'])} نفر تو بازی هستن.\n"
              f"⏱ هر سوال {game['time_limit']} ثانیه وقت دارید.\n\n"
              f"📝 به پیوی ربات برید و به سوالات جواب بدید!\n\n"
-             f"🛑 برای کنسل کردن بازی از دستور /stop استفاده کنید.",
+             f"🛑 برای کنسل کردن بازی از دستور /stop استفاده کنید.\n\n"
+             f"💡 **نکته:** جواب سوال «با چه کسی؟» را با «با x» بنویسید.",
         parse_mode='Markdown'
     )
     
@@ -493,6 +520,10 @@ async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.D
     game = game_manager.games[game_id]
     question = QUESTIONS[q_index]
     time_limit = game['time_limit']
+    
+    extra_note = ""
+    if question == "با چه کسی؟":
+        extra_note = "\n\n💡 **نکته:** لطفاً جواب را با «با x» بنویسید (مثال: با علی، با مامان، با دوستم)"
     
     for player_id in game['players']:
         game_manager.user_states[player_id] = {
@@ -507,7 +538,7 @@ async def ask_question_group(game_id: str, q_index: int, context: ContextTypes.D
                 text=f"📝 **سوال {q_index + 1} از {len(QUESTIONS)}**\n\n"
                      f"❓ {question}\n\n"
                      f"💡 جوابت رو همینجا بنویس...\n"
-                     f"⏱ وقت داری تا {time_limit} ثانیه",
+                     f"⏱ وقت داری تا {time_limit} ثانیه{extra_note}",
                 parse_mode='Markdown'
             )
         except Exception as e:
@@ -535,11 +566,21 @@ async def handle_answer_group(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     game = game_manager.games[game_id]
+    current_question = QUESTIONS[state['question']]
+    
+    # اعتبارسنجی برای سوال "با چه کسی؟"
+    if current_question == "با چه کسی؟" and not answer_text.startswith("با"):
+        await update.message.reply_text(
+            "⚠️ لطفاً جواب را با «با» شروع کنید!\n"
+            "مثال: با علی، با مامان، با دوستم\n\n"
+            "دوباره جوابت رو بنویس:"
+        )
+        return
     
     if str(user_id) not in game['answers']:
         game['answers'][str(user_id)] = {}
     
-    game['answers'][str(user_id)][QUESTIONS[state['question']]] = answer_text
+    game['answers'][str(user_id)][current_question] = answer_text
     state['answered'] = True
     
     await update.message.reply_text("✅ جوابت ذخیره شد! منتظر بقیه...")
@@ -592,7 +633,6 @@ async def finalize_game_group(game_id: str, context: ContextTypes.DEFAULT_TYPE):
     answers = game['answers']
     
     n = len(players)
-    stories = []
     
     for i in range(n):
         story_parts = []
@@ -603,16 +643,16 @@ async def finalize_game_group(game_id: str, context: ContextTypes.DEFAULT_TYPE):
             story_parts.append(answer)
         
         story = " ".join(story_parts)
-        stories.append(f"📖 **داستان {i+1}:** {story}")
-    
-    result_text = "🎉 **نتیجه نهایی بازی «کی کِی کجا»!** 🎉\n\n"
-    result_text += "\n\n".join(stories)
-    result_text += f"\n\n👥 **بازیکنان:** {', '.join(usernames)}"
-    result_text += f"\n\n😂 اینم شد داستان‌هاتون!"
+        await context.bot.send_message(
+            chat_id=game['chat_id'],
+            text=f"**{i+1}:** {story}",
+            parse_mode='Markdown'
+        )
+        await asyncio.sleep(0.5)
     
     await context.bot.send_message(
         chat_id=game['chat_id'],
-        text=result_text,
+        text=f"👥 **بازیکنان:** {', '.join(usernames)}",
         parse_mode='Markdown'
     )
     
@@ -641,12 +681,11 @@ def main():
     """)
     
     app = Application.builder().token(TOKEN).build()
+    app.job_queue = None
     
-    # دستورات
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stop", stop_game_command))
     
-    # کالبک‌ها
     app.add_handler(CallbackQueryHandler(new_group_game, pattern="^new_group_game_"))
     app.add_handler(CallbackQueryHandler(private_help_callback, pattern="^private_help$"))
     app.add_handler(CallbackQueryHandler(group_help_callback, pattern="^group_help$"))
@@ -655,10 +694,7 @@ def main():
     app.add_handler(CallbackQueryHandler(start_group_game, pattern="^start_group_game_"))
     app.add_handler(CallbackQueryHandler(cancel_game_callback, pattern="^cancel_game_"))
     
-    # هندلر پیام‌ها
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer_group))
-    
-    # هندلر خطا
     app.add_error_handler(error_handler)
     
     print("🤖 ربات آماده است!")
